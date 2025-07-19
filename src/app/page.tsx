@@ -1,47 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Board, createInitialBoard, initialPieces, Piece, Player, Square, pieceRules } from './lib/gungi';
-
-// --- Helper Functions ---
-
-function isMoveValid(from: {row: number, col: number}, to: {row: number, col: number}, piece: Piece, board: Board, player: Player): boolean {
-  const rule = pieceRules[piece.type];
-  if (!rule) return false;
-
-  const dy = to.row - from.row;
-  const dx = to.col - from.col;
-  const adx = Math.abs(dx);
-  const ady = Math.abs(dy);
-
-  // Player 2 moves in the opposite direction for forward-only pieces
-  const playerMod = (player === 'Player 1') ? -1 : 1;
-  
-  let movePattern = rule.moves.find(([vy, vx]) => {
-    if (piece.type === 'pawn' || piece.type === 'spear') {
-      return vy * playerMod === dy && vx === dx;
-    }
-    return (vy === dy && vx === dx) || (vy === -dy && vx === -dx) || (vy === dy && vx === -dx) || (vy === -dy && vx === dx);
-  });
-
-  if (!movePattern) return false;
-
-  // Check distance
-  if (adx > rule.maxSteps || ady > rule.maxSteps) return false;
-
-  // Check for obstacles (if it cannot jump)
-  if (!rule.canJump && rule.maxSteps > 1) {
-    let r = from.row + Math.sign(dy);
-    let c = from.col + Math.sign(dx);
-    while (r !== to.row || c !== to.col) {
-      if (board[r][c].stack.length > 0) return false; // Path is blocked
-      r += Math.sign(dy);
-      c += Math.sign(dx);
-    }
-  }
-
-  return true;
-}
 
 // --- Components ---
 
@@ -53,7 +13,7 @@ const HandPiece = ({ piece, isSelected, onClick }: { piece: Omit<Piece, 'id' | '
   </div>
 );
 
-const BoardSquare = ({ square, isSelected, onClick }: { square: Square, isSelected: boolean, onClick: () => void }) => {
+const BoardSquare = ({ square, isSelected, isPossibleMove, onClick }: { square: Square, isSelected: boolean, isPossibleMove: boolean, onClick: () => void }) => {
   const topPiece = square.stack.length > 0 ? square.stack[square.stack.length - 1] : null;
 
   return (
@@ -67,6 +27,7 @@ const BoardSquare = ({ square, isSelected, onClick }: { square: Square, isSelect
         hover:bg-yellow-600 transition-colors duration-200 cursor-pointer
         relative
         ${isSelected ? 'ring-4 ring-yellow-400 ring-inset' : ''}
+        ${isPossibleMove ? 'ring-2 ring-yellow-500 ring-inset' : ''}
       `}
     >
       {topPiece && (
@@ -106,7 +67,9 @@ const GungiPage = () => {
   const [player2Hand, setPlayer2Hand] = useState(initialPieces);
   const [selectedHandPiece, setSelectedHandPiece] = useState<{piece: Omit<Piece, 'id' | 'owner'>, index: number} | null>(null);
   const [selectedBoardPiece, setSelectedBoardPiece] = useState<{piece: Piece, row: number, col: number} | null>(null);
+  const [possibleMoves, setPossibleMoves] = useState<{row: number, col: number}[]>([]);
   const [winner, setWinner] = useState<Player | null>(null);
+  const [gameStarted, setGameStarted] = useState(false);
 
   const restartGame = () => {
     setBoard(createInitialBoard());
@@ -115,75 +78,97 @@ const GungiPage = () => {
     setPlayer2Hand(initialPieces);
     setSelectedHandPiece(null);
     setSelectedBoardPiece(null);
+    setPossibleMoves([]);
     setWinner(null);
+    setGameStarted(false);
   }
 
+  const calculatePossibleMoves = useCallback((piece: Piece, fromRow: number, fromCol: number) => {
+    const moves: {row: number, col: number}[] = [];
+    const rule = pieceRules[piece.type];
+    if (!rule) return [];
+
+    const playerMod = (currentPlayer === 'Player 1') ? -1 : 1;
+
+    for (const move of rule.moves) {
+        const [dy, dx] = move;
+        for (let i = 1; i <= rule.maxSteps; i++) {
+            const toRow = fromRow + dy * playerMod;
+            const toCol = fromCol + dx * playerMod;
+
+            if (toRow < 0 || toRow > 8 || toCol < 0 || toCol > 8) break;
+
+            const targetSquare = board[toRow][toCol];
+            if (board[fromRow][fromCol].stack.length + targetSquare.stack.length > 3) break;
+
+            moves.push({ row: toRow, col: toCol });
+
+            if (targetSquare.stack.length > 0 && !rule.canJump) break;
+        }
+    }
+    return moves;
+  }, [board, currentPlayer]);
+
   useEffect(() => {
-    // Check for a winner whenever the board changes
-    const generals = board.flat().flatMap(s => s.stack).filter(p => p.type === 'general');
-    const p1General = generals.find(p => p.owner === 'Player 1');
-    const p2General = generals.find(p => p.owner === 'Player 2');
+    const generalsOnBoard = board.flat().flatMap(s => s.stack).filter(p => p.type === 'general');
+    const p1GeneralOnBoard = generalsOnBoard.some(p => p.owner === 'Player 1');
+    const p2GeneralOnBoard = generalsOnBoard.some(p => p.owner === 'Player 2');
 
-    if (!p1General) setWinner('Player 2');
-    if (!p2General) setWinner('Player 1');
-  }, [board]);
+    if (p1GeneralOnBoard && p2GeneralOnBoard) {
+      setGameStarted(true);
+    }
 
+    if (gameStarted) {
+      if (!p1GeneralOnBoard) setWinner('Player 2');
+      if (!p2GeneralOnBoard) setWinner('Player 1');
+    }
+  }, [board, gameStarted]);
 
   const handleSquareClick = (row: number, col: number) => {
     if (winner) return;
     const newBoard = JSON.parse(JSON.stringify(board));
 
-    // Action 1: Place from hand
+    // Action: Place from hand
     if (selectedHandPiece) {
       const targetSquare = newBoard[row][col];
-      if (targetSquare.stack.length >= 3) {
-        alert("A stack cannot have more than 3 pieces.");
-        return;
+      if (targetSquare.stack.length >= 3 || (targetSquare.stack.length > 0 && targetSquare.stack[0].owner !== currentPlayer)) {
+        alert("Invalid placement."); return;
       }
-      if (targetSquare.stack.length > 0 && targetSquare.stack[0].owner !== currentPlayer) {
-        alert("You can only stack on your own pieces.");
-        return;
-      }
-
       const newPiece: Piece = { ...selectedHandPiece.piece, id: `p-${Date.now()}`, owner: currentPlayer };
       targetSquare.stack.push(newPiece);
       setBoard(newBoard);
-
       if (currentPlayer === 'Player 1') setPlayer1Hand(prev => prev.filter((_, i) => i !== selectedHandPiece.index));
       else setPlayer2Hand(prev => prev.filter((_, i) => i !== selectedHandPiece.index));
-      
       setSelectedHandPiece(null);
       setCurrentPlayer(p => p === 'Player 1' ? 'Player 2' : 'Player 1');
       return;
     }
 
-    // Action 2: Move on board
+    // Action: Move on board
     if (selectedBoardPiece) {
       const { piece, row: fromRow, col: fromCol } = selectedBoardPiece;
       if (row === fromRow && col === fromCol) {
-        setSelectedBoardPiece(null); return;
+        setSelectedBoardPiece(null); setPossibleMoves([]); return;
       }
 
-      if (isMoveValid({row: fromRow, col: fromCol}, {row, col}, piece, board, currentPlayer)) {
+      if (possibleMoves.some(m => m.row === row && m.col === col)) {
         const fromSquare = newBoard[fromRow][fromCol];
         const toSquare = newBoard[row][col];
-        if (fromSquare.stack.length + toSquare.stack.length > 3) {
-          alert("Invalid move: Stack would be too high."); return;
-        }
-
         const movingPiece = fromSquare.stack.pop();
         if (movingPiece) toSquare.stack.push(movingPiece);
         setBoard(newBoard);
         setSelectedBoardPiece(null);
+        setPossibleMoves([]);
         setCurrentPlayer(p => p === 'Player 1' ? 'Player 2' : 'Player 1');
       } else {
         alert("Invalid move for this piece.");
-        setSelectedBoardPiece(null);
       }
     } else {
       const square = newBoard[row][col];
       if (square.stack.length > 0 && square.stack[square.stack.length - 1].owner === currentPlayer) {
-        setSelectedBoardPiece({ piece: square.stack[square.stack.length - 1], row, col });
+        const pieceToSelect = square.stack[square.stack.length - 1];
+        setSelectedBoardPiece({ piece: pieceToSelect, row, col });
+        setPossibleMoves(calculatePossibleMoves(pieceToSelect, row, col));
         setSelectedHandPiece(null);
       }
     }
@@ -191,10 +176,12 @@ const GungiPage = () => {
 
   const handleHandPieceClick = (piece: Omit<Piece, 'id' | 'owner'>, index: number) => {
     if (winner) return;
-    if (selectedHandPiece?.index === index) setSelectedHandPiece(null);
-    else {
+    if (selectedHandPiece?.index === index) {
+      setSelectedHandPiece(null);
+    } else {
       setSelectedHandPiece({ piece, index });
       setSelectedBoardPiece(null);
+      setPossibleMoves([]);
     }
   }
 
@@ -217,6 +204,7 @@ const GungiPage = () => {
             key={square.id}
             square={square}
             isSelected={selectedBoardPiece?.row === square.row && selectedBoardPiece?.col === square.col}
+            isPossibleMove={possibleMoves.some(m => m.row === square.row && m.col === square.col)}
             onClick={() => handleSquareClick(square.row, square.col)}
           />
         ))}
