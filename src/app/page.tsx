@@ -5,10 +5,10 @@ import { Board, createInitialBoard, initialPieces, Piece, Player, Square, pieceR
 
 // --- Components ---
 
-const HandPiece = ({ piece, isSelected, onClick }: { piece: Omit<Piece, 'id' | 'owner'>, isSelected: boolean, onClick: () => void }) => (
+const HandPiece = ({ piece, isSelected, onClick, isClickable }: { piece: Omit<Piece, 'id' | 'owner'>, isSelected: boolean, onClick: () => void, isClickable: boolean }) => (
   <div 
-    onClick={onClick}
-    className={`relative w-10 h-10 sm:w-12 sm:h-12 bg-yellow-900 border-2 ${isSelected ? 'border-yellow-400 ring-2 ring-yellow-300' : 'border-yellow-950'} rounded-md flex items-center justify-center font-bold text-lg sm:text-xl text-white cursor-pointer hover:bg-yellow-700 transition-all`}>
+    onClick={isClickable ? onClick : undefined}
+    className={`relative w-10 h-10 sm:w-12 sm:h-12 bg-yellow-900 border-2 ${isSelected ? 'border-yellow-400 ring-2 ring-yellow-300' : 'border-yellow-950'} rounded-md flex items-center justify-center font-bold text-lg sm:text-xl text-white ${isClickable ? 'cursor-pointer hover:bg-yellow-700' : 'cursor-not-allowed opacity-70'} transition-all`}>
     {piece.name}
   </div>
 );
@@ -32,7 +32,7 @@ const BoardSquare = ({ square, isSelected, isPossibleMove, onClick }: { square: 
     >
       {topPiece && (
         <>
-          <div className={`font-bold text-2xl ${topPiece.owner === 'Player 1' ? 'text-white' : 'text-gray-400'}`}>
+          <div className={`font-bold text-2xl ${topPiece.owner === 'Player 1' ? 'text-white' : 'text-gray-400'} ${topPiece.owner === 'Player 2' ? 'rotate-180' : ''}`}>
             {topPiece.name}
           </div>
           {square.stack.length > 1 && (
@@ -42,6 +42,32 @@ const BoardSquare = ({ square, isSelected, isPossibleMove, onClick }: { square: 
           )}
         </>
       )}
+    </div>
+  );
+};
+
+const PlayerHand = ({ player, hand, currentPlayer, selectedHandPiece, onPieceClick }: {
+  player: Player;
+  hand: Omit<Piece, 'id' | 'owner'>[];
+  currentPlayer: Player;
+  selectedHandPiece: {piece: Omit<Piece, 'id' | 'owner'>, index: number} | null;
+  onPieceClick: (piece: Omit<Piece, 'id' | 'owner'>, index: number) => void;
+}) => {
+  const isTurn = player === currentPlayer;
+  return (
+    <div className={`w-48 md:w-56 h-full p-2 bg-gray-800 rounded-lg flex flex-col ${player === 'Player 2' ? 'rotate-180' : ''}`}>
+      <h2 className={`text-xl font-bold mb-4 text-center ${isTurn ? 'text-yellow-400' : 'text-gray-500'}`}>{`${player}'s Hand`}</h2>
+      <div className={`flex flex-row flex-wrap gap-2 justify-center`}>
+        {hand.map((p, i) => (
+          <HandPiece 
+            key={i} 
+            piece={p} 
+            isSelected={isTurn && selectedHandPiece?.index === i}
+            isClickable={isTurn}
+            onClick={() => onPieceClick(p, i)} 
+          />
+        ))}
+      </div>
     </div>
   );
 };
@@ -93,8 +119,8 @@ const GungiPage = () => {
     for (const move of rule.moves) {
         const [dy, dx] = move;
         for (let i = 1; i <= rule.maxSteps; i++) {
-            const toRow = fromRow + dy * playerMod;
-            const toCol = fromCol + dx * playerMod;
+            const toRow = fromRow + (piece.type === 'pawn' || piece.type === 'spear' ? dy * playerMod : dy * i);
+            const toCol = fromCol + dx * i;
 
             if (toRow < 0 || toRow > 8 || toCol < 0 || toCol > 8) break;
 
@@ -110,7 +136,7 @@ const GungiPage = () => {
   }, [board, currentPlayer]);
 
   useEffect(() => {
-    const generalsOnBoard = board.flat().flatMap(s => s.stack).filter(p => p.type === 'general');
+    const generalsOnBoard = board.flat().flatMap(s => s.stack).filter(p => p.type === 'king');
     const p1GeneralOnBoard = generalsOnBoard.some(p => p.owner === 'Player 1');
     const p2GeneralOnBoard = generalsOnBoard.some(p => p.owner === 'Player 2');
 
@@ -131,9 +157,43 @@ const GungiPage = () => {
     // Action: Place from hand
     if (selectedHandPiece) {
       const targetSquare = newBoard[row][col];
+      // --- Placement Validation ---
+      // 1. Stacking validation
       if (targetSquare.stack.length >= 3 || (targetSquare.stack.length > 0 && targetSquare.stack[0].owner !== currentPlayer)) {
-        alert("Invalid placement."); return;
+        alert("Invalid placement: Cannot stack here or stack is full."); 
+        return;
       }
+
+      // 2. Front line validation
+      let foremostRow = null;
+      if (currentPlayer === 'Player 1') {
+        const player1Rows = board.flat()
+          .filter(s => s.stack.length > 0 && s.stack[0].owner === 'Player 1')
+          .map(s => s.row);
+        if (player1Rows.length > 0) {
+          foremostRow = Math.min(...player1Rows);
+        }
+      } else { // Player 2
+        const player2Rows = board.flat()
+          .filter(s => s.stack.length > 0 && s.stack[0].owner === 'Player 2')
+          .map(s => s.row);
+        if (player2Rows.length > 0) {
+          foremostRow = Math.max(...player2Rows);
+        }
+      }
+
+      if (foremostRow !== null) {
+        if (currentPlayer === 'Player 1' && row < foremostRow) {
+          alert(`Invalid placement: Cannot place a piece on or beyond your front line (row ${foremostRow + 1}).`);
+          return;
+        }
+        if (currentPlayer === 'Player 2' && row > foremostRow) {
+          alert(`Invalid placement: Cannot place a piece on or beyond your front line (row ${foremostRow + 1}).`);
+          return;
+        }
+      }
+      // --- End Validation ---
+
       const newPiece: Piece = { ...selectedHandPiece.piece, id: `p-${Date.now()}`, owner: currentPlayer };
       targetSquare.stack.push(newPiece);
       setBoard(newBoard);
@@ -176,6 +236,9 @@ const GungiPage = () => {
 
   const handleHandPieceClick = (piece: Omit<Piece, 'id' | 'owner'>, index: number) => {
     if (winner) return;
+    const hand = currentPlayer === 'Player 1' ? player1Hand : player2Hand;
+    if (!hand.some(p => p.name === piece.name)) return;
+
     if (selectedHandPiece?.index === index) {
       setSelectedHandPiece(null);
     } else {
@@ -185,42 +248,46 @@ const GungiPage = () => {
     }
   }
 
-  const currentHand = currentPlayer === 'Player 1' ? player1Hand : player2Hand;
-
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between bg-gray-900 text-white p-4 sm:p-8">
+    <main className="flex min-h-screen w-full flex-col items-center justify-start bg-gray-900 text-white p-4 sm:p-8">
       {winner && <GameOverModal winner={winner} onRestart={restartGame} />}
-      <div className="w-full max-w-5xl flex justify-between items-center">
+      
+      <div className="w-full max-w-7xl flex justify-between items-center mb-4">
         <h1 className="text-4xl sm:text-5xl font-bold font-serif text-yellow-100">軍議</h1>
         <div className="text-right">
           <p className="text-xl text-gray-300">Current Turn</p>
           <p className="text-2xl font-bold text-yellow-400">{currentPlayer}</p>
         </div>
       </div>
-      
-      <div className="grid grid-cols-9 grid-rows-9 border-4 border-yellow-950 shadow-2xl bg-yellow-800 my-8">
-        {board.flat().map((square) => (
-          <BoardSquare 
-            key={square.id}
-            square={square}
-            isSelected={selectedBoardPiece?.row === square.row && selectedBoardPiece?.col === square.col}
-            isPossibleMove={possibleMoves.some(m => m.row === square.row && m.col === square.col)}
-            onClick={() => handleSquareClick(square.row, square.col)}
-          />
-        ))}
-      </div>
 
-      <div className="w-full max-w-5xl p-4 bg-gray-800 rounded-lg">
-        <h2 className="text-xl font-bold mb-4 text-yellow-100">{`${currentPlayer}'s Hand`}</h2>
-        <div className="flex flex-wrap gap-2">
-          {currentHand.map((p, i) => (
-            <HandPiece 
-              key={i} 
-              piece={p} 
-              isSelected={selectedHandPiece?.index === i}
-              onClick={() => handleHandPieceClick(p, i)} 
+      <div className="flex flex-row items-start justify-center space-x-4 w-full max-w-7xl">
+        <PlayerHand 
+          player="Player 2"
+          hand={player2Hand}
+          currentPlayer={currentPlayer}
+          selectedHandPiece={selectedHandPiece}
+          onPieceClick={handleHandPieceClick}
+        />
+
+        <div className="grid grid-cols-9 grid-rows-9 border-4 border-yellow-950 shadow-2xl bg-yellow-800">
+          {board.flat().map((square) => (
+            <BoardSquare 
+              key={square.id}
+              square={square}
+              isSelected={selectedBoardPiece?.row === square.row && selectedBoardPiece?.col === square.col}
+              isPossibleMove={possibleMoves.some(m => m.row === square.row && m.col === square.col)}
+              onClick={() => handleSquareClick(square.row, square.col)}
             />
           ))}
+        </div>
+        <div className="flex flex-row self-end space-x-4">
+          <PlayerHand 
+            player="Player 1"
+            hand={player1Hand}
+            currentPlayer={currentPlayer}
+            selectedHandPiece={selectedHandPiece}
+            onPieceClick={handleHandPieceClick}
+          />
         </div>
       </div>
     </main>

@@ -21,20 +21,51 @@ export type Board = Square[][];
 // --- Piece Definitions ---
 
 export const initialPieces: Omit<Piece, 'id' | 'owner'>[] = [
-  { name: '帥', type: 'king' },
-  { name: '大', type: 'general' },
-  { name: '中', type: 'lieutenant' },
-  { name: '小', type: 'major' },
-  { name: '侍', type: 'samurai'}, { name: '侍', type: 'samurai'},
-  { name: '槍', type: 'spear' },{ name: '槍', type: 'spear' },{ name: '槍', type: 'spear' },
-  { name: '馬', type: 'knight' }, { name: '馬', type: 'knight' },
-  { name: '忍', type: 'shinobi' },{ name: '忍', type: 'shinobi' },
-  { name: '砦', type: 'fort' },{ name: '砦', type: 'fort' },
-  { name: '兵', type: 'pawn' }, { name: '兵', type: 'pawn' }, { name: '兵', type: 'pawn' }, { name: '兵', type: 'pawn' },
+  { name: '小', type: 'major' },{ name: '小', type: 'major' },
+  { name: '槍', type: 'spear' },{ name: '槍', type: 'spear' },
+  { name: '馬', type: 'knight' }, 
+  { name: '忍', type: 'shinobi' },
+  { name: '兵', type: 'pawn' },
   { name: '砲', type: 'canon' },
-  { name: '弓', type: 'archer' }, { name: '弓', type: 'archer' },
   { name: '筒', type: 'tube' },
   { name: '謀', type: 'commander' },
+];
+
+// --- Initial Board Setup ---
+
+const initialSetup: { row: number; col: number; piece: Omit<Piece, 'id' | 'owner'> }[] = [
+  // Player 1 (Bottom)
+  { row: 6, col: 0, piece: { name: '兵', type: 'pawn' } },
+  { row: 6, col: 2, piece: { name: '砦', type: 'fort' } },
+  { row: 6, col: 3, piece: { name: '侍', type: 'samurai' } },
+  { row: 6, col: 4, piece: { name: '兵', type: 'pawn' } },
+  { row: 6, col: 5, piece: { name: '侍', type: 'samurai' } },
+  { row: 6, col: 6, piece: { name: '砦', type: 'fort' } },
+  { row: 6, col: 8, piece: { name: '兵', type: 'pawn' } },
+  { row: 7, col: 1, piece: { name: '忍', type: 'shinobi' } },
+  { row: 7, col: 2, piece: { name: '弓', type: 'archer' } },
+  { row: 7, col: 4, piece: { name: '槍', type: 'spear' } },
+  { row: 7, col: 6, piece: { name: '弓', type: 'archer' } },
+  { row: 7, col: 7, piece: { name: '馬', type: 'knight' } },
+  { row: 8, col: 3, piece: { name: '大', type: 'general' } },
+  { row: 8, col: 4, piece: { name: '帥', type: 'king' } },
+  { row: 8, col: 5, piece: { name: '中', type: 'lieutenant' } },
+  // Player 2 (Top) - Mirrored
+  { row: 0, col: 3, piece: { name: '中', type: 'lieutenant' } },
+  { row: 0, col: 4, piece: { name: '帥', type: 'king' } },
+  { row: 0, col: 5, piece: { name: '大', type: 'general' } },
+  { row: 1, col: 1, piece: { name: '馬', type: 'knight' } },
+  { row: 1, col: 2, piece: { name: '弓', type: 'archer' } },
+  { row: 1, col: 4, piece: { name: '槍', type: 'spear' } },
+  { row: 1, col: 6, piece: { name: '弓', type: 'archer' } },
+  { row: 1, col: 7, piece: { name: '忍', type: 'shinobi' } },
+  { row: 2, col: 0, piece: { name: '兵', type: 'pawn' } },
+  { row: 2, col: 2, piece: { name: '砦', type: 'fort' } },
+  { row: 2, col: 3, piece: { name: '侍', type: 'samurai' } },
+  { row: 2, col: 4, piece: { name: '兵', type: 'pawn' } },
+  { row: 2, col: 5, piece: { name: '侍', type: 'samurai' } },
+  { row: 2, col: 6, piece: { name: '砦', type: 'fort' } },
+  { row: 2, col: 8, piece: { name: '兵', type: 'pawn' } },
 ];
 
 type MoveVector = [number, number];
@@ -83,6 +114,16 @@ export function createInitialBoard(): Board {
       board[row][col] = { id: `sq-${row}-${col}`, row, col, stack: [] };
     }
   }
+
+  for (const setup of initialSetup) {
+    const owner = setup.row > 4 ? 'Player 1' : 'Player 2';
+    board[setup.row][setup.col].stack.push({
+      ...setup.piece,
+      id: `p-${setup.row}-${setup.col}`,
+      owner: owner,
+    });
+  }
+
   return board;
 }
 
