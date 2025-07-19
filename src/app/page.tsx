@@ -55,9 +55,9 @@ const PlayerHand = ({ player, hand, currentPlayer, selectedHandPiece, onPieceCli
 }) => {
   const isTurn = player === currentPlayer;
   return (
-    <div className={`w-48 md:w-56 h-full p-2 bg-gray-800 rounded-lg flex flex-col ${player === 'Player 2' ? 'rotate-180' : ''}`}>
+    <div className="w-48 md:w-56 h-full p-2 bg-gray-800 rounded-lg flex flex-col">
       <h2 className={`text-xl font-bold mb-4 text-center ${isTurn ? 'text-yellow-400' : 'text-gray-500'}`}>{`${player}'s Hand`}</h2>
-      <div className={`flex flex-row flex-wrap gap-2 justify-center`}>
+      <div className="flex flex-row flex-wrap gap-2 justify-center">
         {hand.map((p, i) => (
           <HandPiece 
             key={i} 
@@ -78,7 +78,27 @@ const GameOverModal = ({ winner, onRestart }: { winner: Player, onRestart: () =>
       <h2 className="text-4xl font-bold text-yellow-400 mb-4">Game Over</h2>
       <p className="text-2xl text-white mb-8">{winner} wins!</p>
       <button onClick={onRestart} className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-6 rounded-lg text-lg">
-        Play Again
+        もう一度プレイ
+      </button>
+    </div>
+  </div>
+);
+
+const CaptureChoiceModal = ({ onCapture, onStack, onCancel }: { onCapture: () => void, onStack: () => void, onCancel: () => void }) => (
+  <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div className="bg-gray-800 p-8 rounded-lg text-center shadow-xl">
+      <h2 className="text-2xl font-bold text-white mb-6">駒をどうしますか？</h2>
+      <div className="flex justify-center space-x-4">
+        <button onClick={onCapture} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-6 rounded-lg text-lg">
+          駒をとる
+        </button>
+        <button onClick={onStack} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg text-lg">
+          ツケる
+        </button>
+      </div>
+      <p className="text-lg text-gray-300 mt-8">※ツケる...駒の上に乗ることで駒を強化出来る</p>
+       <button onClick={onCancel} className="mt-6 text-gray-400 hover:text-white">
+        キャンセル
       </button>
     </div>
   </div>
@@ -96,6 +116,7 @@ const GungiPage = () => {
   const [possibleMoves, setPossibleMoves] = useState<{row: number, col: number}[]>([]);
   const [winner, setWinner] = useState<Player | null>(null);
   const [gameStarted, setGameStarted] = useState(false);
+  const [moveChoice, setMoveChoice] = useState<{show: boolean, from: {row: number, col: number}, to: {row: number, col: number}} | null>(null);
 
   const restartGame = () => {
     setBoard(createInitialBoard());
@@ -107,20 +128,35 @@ const GungiPage = () => {
     setPossibleMoves([]);
     setWinner(null);
     setGameStarted(false);
+    setMoveChoice(null);
   }
 
   const calculatePossibleMoves = useCallback((piece: Piece, fromRow: number, fromCol: number) => {
     const moves: {row: number, col: number}[] = [];
-    const rule = pieceRules[piece.type];
-    if (!rule) return [];
+    const pieceDef = pieceRules[piece.type];
+    if (!pieceDef) return [];
+
+    const stackHeight = board[fromRow][fromCol].stack.length;
+    const rule = (stackHeight > 1 && pieceDef.evolved) ? pieceDef.evolved : pieceDef.base;
 
     const playerMod = (currentPlayer === 'Player 1') ? -1 : 1;
 
     for (const move of rule.moves) {
         const [dy, dx] = move;
         for (let i = 1; i <= rule.maxSteps; i++) {
-            const toRow = fromRow + (piece.type === 'pawn' || piece.type === 'spear' ? dy * playerMod : dy * i);
-            const toCol = fromCol + dx * i;
+            let toRow, toCol;
+
+            // Apply player perspective modifier only to directional pieces
+            if (piece.type === 'pawn' || piece.type === 'spear') {
+                toRow = fromRow + dy * playerMod;
+                toCol = fromCol + dx; // dx is usually 0 for these pieces
+            } else if (stackHeight > 1 ) { // Evolved pawn (Gold General logic)
+                toRow = fromRow + dy * playerMod;
+                toCol = fromCol + dx * playerMod;
+            } else {
+                toRow = fromRow + dy * i;
+                toCol = fromCol + dx * i;
+            }
 
             if (toRow < 0 || toRow > 8 || toCol < 0 || toCol > 8) break;
 
@@ -150,49 +186,67 @@ const GungiPage = () => {
     }
   }, [board, gameStarted]);
 
+  const handleMoveResolution = (isCapture: boolean) => {
+    if (!moveChoice) return;
+
+    const { from, to } = moveChoice;
+    const newBoard = JSON.parse(JSON.stringify(board));
+    const fromSquare = newBoard[from.row][from.col];
+    const toSquare = newBoard[to.row][to.col];
+    const movingPiece = fromSquare.stack.pop();
+
+    if (!movingPiece) return;
+
+    if (isCapture) {
+        // Remove opponent's pieces and place the new one
+        toSquare.stack = [movingPiece]; 
+    } else {
+        // Stack on top
+        toSquare.stack.push(movingPiece);
+    }
+
+    setBoard(newBoard);
+    
+    // Reset states
+    setMoveChoice(null);
+    setSelectedBoardPiece(null);
+    setPossibleMoves([]);
+    setCurrentPlayer(p => p === 'Player 1' ? 'Player 2' : 'Player 1');
+  };
+
+  const cancelMove = () => {
+      setMoveChoice(null);
+      setSelectedBoardPiece(null);
+      setPossibleMoves([]);
+  }
+
   const handleSquareClick = (row: number, col: number) => {
-    if (winner) return;
+    if (winner || moveChoice) return;
     const newBoard = JSON.parse(JSON.stringify(board));
 
     // Action: Place from hand
     if (selectedHandPiece) {
       const targetSquare = newBoard[row][col];
-      // --- Placement Validation ---
-      // 1. Stacking validation
-      if (targetSquare.stack.length >= 3 || (targetSquare.stack.length > 0 && targetSquare.stack[0].owner !== currentPlayer)) {
-        alert("Invalid placement: Cannot stack here or stack is full."); 
+      const topPieceOnTarget = targetSquare.stack.length > 0 ? targetSquare.stack[targetSquare.stack.length - 1] : null;
+
+      // Check if stacking on own King
+      if (topPieceOnTarget && topPieceOnTarget.owner === currentPlayer && topPieceOnTarget.type === 'king') {
+        alert("You cannot stack pieces on your own King (帥).");
         return;
       }
 
-      // 2. Front line validation
       let foremostRow = null;
       if (currentPlayer === 'Player 1') {
-        const player1Rows = board.flat()
-          .filter(s => s.stack.length > 0 && s.stack[0].owner === 'Player 1')
-          .map(s => s.row);
-        if (player1Rows.length > 0) {
-          foremostRow = Math.min(...player1Rows);
-        }
-      } else { // Player 2
-        const player2Rows = board.flat()
-          .filter(s => s.stack.length > 0 && s.stack[0].owner === 'Player 2')
-          .map(s => s.row);
-        if (player2Rows.length > 0) {
-          foremostRow = Math.max(...player2Rows);
-        }
+        const player1Rows = board.flat().filter(s => s.stack.length > 0 && s.stack[0].owner === 'Player 1').map(s => s.row);
+        if (player1Rows.length > 0) foremostRow = Math.min(...player1Rows);
+      } else {
+        const player2Rows = board.flat().filter(s => s.stack.length > 0 && s.stack[0].owner === 'Player 2').map(s => s.row);
+        if (player2Rows.length > 0) foremostRow = Math.max(...player2Rows);
       }
 
-      if (foremostRow !== null) {
-        if (currentPlayer === 'Player 1' && row < foremostRow) {
-          alert(`Invalid placement: Cannot place a piece on or beyond your front line (row ${foremostRow + 1}).`);
-          return;
-        }
-        if (currentPlayer === 'Player 2' && row > foremostRow) {
-          alert(`Invalid placement: Cannot place a piece on or beyond your front line (row ${foremostRow + 1}).`);
-          return;
-        }
+      if (targetSquare.stack.length >= 3 || (topPieceOnTarget && topPieceOnTarget.owner !== currentPlayer) || (foremostRow !== null && (currentPlayer === 'Player 1' ? row <= foremostRow : row >= foremostRow))) {
+        alert("「新」は自陣の最奥行までしか打てません"); return;
       }
-      // --- End Validation ---
 
       const newPiece: Piece = { ...selectedHandPiece.piece, id: `p-${Date.now()}`, owner: currentPlayer };
       targetSquare.stack.push(newPiece);
@@ -206,22 +260,37 @@ const GungiPage = () => {
 
     // Action: Move on board
     if (selectedBoardPiece) {
-      const { piece, row: fromRow, col: fromCol } = selectedBoardPiece;
+      const { row: fromRow, col: fromCol } = selectedBoardPiece;
       if (row === fromRow && col === fromCol) {
         setSelectedBoardPiece(null); setPossibleMoves([]); return;
       }
 
       if (possibleMoves.some(m => m.row === row && m.col === col)) {
-        const fromSquare = newBoard[fromRow][fromCol];
         const toSquare = newBoard[row][col];
-        const movingPiece = fromSquare.stack.pop();
-        if (movingPiece) toSquare.stack.push(movingPiece);
-        setBoard(newBoard);
+        const topPiece = toSquare.stack.length > 0 ? toSquare.stack[toSquare.stack.length - 1] : null;
+        
+        // Check if moving onto own King
+        if (topPiece && topPiece.owner === currentPlayer && topPiece.type === 'king') {
+            alert("帥の上にツケることは出来ません。");
+            return;
+        }
+
+        const isOpponentSquare = topPiece && topPiece.owner !== currentPlayer;
+
+        if (isOpponentSquare) {
+            setMoveChoice({ show: true, from: { row: fromRow, col: fromCol }, to: { row, col } });
+        } else {
+            const fromSquare = newBoard[fromRow][fromCol];
+            const movingPiece = fromSquare.stack.pop();
+            if (movingPiece) toSquare.stack.push(movingPiece);
+            setBoard(newBoard);
+            setSelectedBoardPiece(null);
+            setPossibleMoves([]);
+            setCurrentPlayer(p => p === 'Player 1' ? 'Player 2' : 'Player 1');
+        }
+      } else {
         setSelectedBoardPiece(null);
         setPossibleMoves([]);
-        setCurrentPlayer(p => p === 'Player 1' ? 'Player 2' : 'Player 1');
-      } else {
-        alert("Invalid move for this piece.");
       }
     } else {
       const square = newBoard[row][col];
@@ -251,6 +320,7 @@ const GungiPage = () => {
   return (
     <main className="flex min-h-screen w-full flex-col items-center justify-start bg-gray-900 text-white p-4 sm:p-8">
       {winner && <GameOverModal winner={winner} onRestart={restartGame} />}
+      {moveChoice?.show && <CaptureChoiceModal onCapture={() => handleMoveResolution(true)} onStack={() => handleMoveResolution(false)} onCancel={cancelMove} />}
       
       <div className="w-full max-w-7xl flex justify-between items-center mb-4">
         <h1 className="text-4xl sm:text-5xl font-bold font-serif text-yellow-100">軍議</h1>
@@ -280,15 +350,14 @@ const GungiPage = () => {
             />
           ))}
         </div>
-        <div className="flex flex-row self-end space-x-4">
-          <PlayerHand 
-            player="Player 1"
-            hand={player1Hand}
-            currentPlayer={currentPlayer}
-            selectedHandPiece={selectedHandPiece}
-            onPieceClick={handleHandPieceClick}
-          />
-        </div>
+
+        <PlayerHand 
+          player="Player 1"
+          hand={player1Hand}
+          currentPlayer={currentPlayer}
+          selectedHandPiece={selectedHandPiece}
+          onPieceClick={handleHandPieceClick}
+        />
       </div>
     </main>
   );

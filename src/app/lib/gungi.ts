@@ -84,24 +84,41 @@ const canonMoves: MoveVector[] = [[3,0],[0,1],[0,-1],[-1,0]];
 const archerMoves: MoveVector[] = [[2,-1],[2,0],[2,1],[-1,0]];
 const tubeMoves: MoveVector[] = [[2,0],[-1,1],[-1,-1]];
 const commanderMoves: MoveVector[] = [[1,1],[1,-1],[-1,0]];
+const diagonalMoves: MoveVector[] = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+const orthogonalMoves: MoveVector[] = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
 
 
-export const pieceRules: Record<PieceType, { moves: MoveVector[], maxSteps: number, canJump: boolean }> = {
-
-  king: { moves: kingMoves, maxSteps: 1, canJump: false },
-  general: { moves: generalMoves, maxSteps: 1, canJump: false },
-  lieutenant: { moves: lieutenantMoves, maxSteps: 1, canJump: false },
-  major:   { moves: majorMoves, maxSteps: 1, canJump: false },
-  samurai: { moves: samuraiMoves, maxSteps: 1, canJump: false },
-  spear: { moves: spearMoves, maxSteps: 1, canJump: false },
-  knight:  { moves: knightMoves, maxSteps: 1, canJump: false },
-  shinobi:  { moves: shinobiMoves, maxSteps: 1, canJump: false },
-  fort: { moves: fortMoves, maxSteps: 1, canJump: false },
-  pawn:    { moves: pawnMoves, maxSteps: 1, canJump: false },
-  canon:   { moves: canonMoves, maxSteps: 1, canJump: false },
-  archer:    { moves: archerMoves, maxSteps: 1, canJump: false },
-  tube: { moves: tubeMoves, maxSteps: 1, canJump: false },
-  commander: { moves: commanderMoves, maxSteps: 1, canJump: false },
+export const pieceRules: Record<PieceType, { 
+  base: { moves: MoveVector[], maxSteps: number, canJump: boolean, directional: boolean },
+  evolved?: { moves: MoveVector[], maxSteps: number, canJump: boolean, directional: boolean },
+  mastered?: { moves: MoveVector[], maxSteps: number, canJump: boolean, directional: boolean }
+}> = {
+  king:      { base: { moves: kingMoves, maxSteps: 1, canJump: false, directional: false } },
+  general:   { base: { moves: generalMoves, maxSteps: 1, canJump: false, directional: false } },
+  lieutenant:{ base: { moves: lieutenantMoves, maxSteps: 1, canJump: false, directional: false } },
+  major:     { base: { moves: majorMoves, maxSteps: 1, canJump: false, directional: false } },
+  samurai:   { base: { moves: samuraiMoves, maxSteps: 1, canJump: false, directional: false } },
+  spear:     { base: { moves: spearMoves, maxSteps: 1, canJump: false, directional: true } },
+  knight:    { 
+    base: { moves: knightMoves, maxSteps: 1, canJump: false, directional: false },
+    evolved: { moves: [...knightMoves, ...diagonalMoves], maxSteps: 1, canJump: false, directional: false },
+    mastered: { moves: [...knightMoves, ...diagonalMoves], maxSteps: 1, canJump: true, directional: false } // Can now jump
+  },
+  shinobi:   { 
+    base: { moves: shinobiMoves, maxSteps: 1, canJump: false, directional: false },
+    evolved: { moves: [...shinobiMoves, ...orthogonalMoves], maxSteps: 1, canJump: false, directional: false },
+    mastered: { moves: [...shinobiMoves, ...orthogonalMoves], maxSteps: 2, canJump: false, directional: false } // Can now move 2 steps
+  },
+  fort:      { base: { moves: fortMoves, maxSteps: 1, canJump: false, directional: false } },
+  pawn:      { 
+    base: { moves: pawnMoves, maxSteps: 1, canJump: false, directional: true },
+    evolved: { moves: [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, 0]], maxSteps: 1, canJump: false, directional: true }, // Gold General moves
+    mastered: { moves: kingMoves, maxSteps: 1, canJump: false, directional: false }
+  },
+  canon:     { base: { moves: canonMoves, maxSteps: 1, canJump: false, directional: false } },
+  archer:    { base: { moves: archerMoves, maxSteps: 1, canJump: false, directional: true } },
+  tube:      { base: { moves: tubeMoves, maxSteps: 1, canJump: false, directional: false } },
+  commander: { base: { moves: commanderMoves, maxSteps: 1, canJump: false, directional: false } },
 };
 
 // --- Board Creation ---
