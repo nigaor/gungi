@@ -439,7 +439,7 @@ const GungiPage = () => {
         if (
           toSquare.stack.length > fromSquare.stack.length
         ) {
-          alert("自駒より高い段の駒へは取ったりツケることが出来ません")
+          alert("選択した駒より高い段の駒へは取ったりツケることが出来ません")
           return;
         }
 
