@@ -261,7 +261,7 @@ const GungiPage = () => {
 
           const targetSquare = board[toRow][toCol];
           if (
-            board[fromRow][fromCol].stack.length + targetSquare.stack.length >
+            stackHeight + targetSquare.stack.length >
             3
           )
             break;
@@ -335,8 +335,7 @@ const GungiPage = () => {
   const handleSquareClick = (row: number, col: number) => {
     if (winner || moveChoice) return;
     const newBoard = JSON.parse(JSON.stringify(board));
-
-    // Action: Place from hand
+    // 手持ちの駒の処理
     if (selectedHandPiece) {
       const targetSquare = newBoard[row][col];
       const topPieceOnTarget =
@@ -344,13 +343,12 @@ const GungiPage = () => {
           ? targetSquare.stack[targetSquare.stack.length - 1]
           : null;
 
-      // Check if stacking on own King
       if (
         topPieceOnTarget &&
         topPieceOnTarget.owner === currentPlayer &&
         topPieceOnTarget.type === "king"
       ) {
-        alert("帥をツケることは出来ません");
+        alert("帥の上に新をすることは出来ません");
         return;
       }
 
@@ -374,8 +372,8 @@ const GungiPage = () => {
         (topPieceOnTarget && topPieceOnTarget.owner !== currentPlayer) ||
         (foremostRow !== null &&
           (currentPlayer === "Player 1"
-            ? row <= foremostRow
-            : row >= foremostRow))
+            ? row  < foremostRow
+            : row  > foremostRow))
       ) {
         alert("「新」は自陣の最奥行までしか打てません");
         return;
@@ -401,7 +399,7 @@ const GungiPage = () => {
       return;
     }
 
-    // Action: Move on board
+    // 盤上の駒の処理
     if (selectedBoardPiece) {
       const { row: fromRow, col: fromCol } = selectedBoardPiece;
       if (row === fromRow && col === fromCol) {
@@ -411,13 +409,15 @@ const GungiPage = () => {
       }
 
       if (possibleMoves.some((m) => m.row === row && m.col === col)) {
-        const toSquare = newBoard[row][col];
+        const toSquare:Square = newBoard[row][col];
+        
+        const fromSquare:Square = newBoard[fromRow][fromCol];
+        console.log(fromSquare);
         const topPiece =
           toSquare.stack.length > 0
             ? toSquare.stack[toSquare.stack.length - 1]
             : null;
 
-        // Check if moving onto own King
         if (
           topPiece &&
           topPiece.owner === currentPlayer &&
@@ -425,9 +425,25 @@ const GungiPage = () => {
         ) {
           alert("帥の上にツケることは出来ません。");
           return;
+        } else if (
+          topPiece &&
+          topPiece.owner !== currentPlayer &&
+          topPiece.type === "king"
+        ) {
+          setWinner(currentPlayer);
+          return;
         }
 
-        const isOpponentSquare: boolean =
+        
+
+        if (
+          toSquare.stack.length > fromSquare.stack.length
+        ) {
+          alert("自駒より高い段の駒へは取ったりツケることが出来ません")
+          return;
+        }
+
+        const isOpponentSquare: (boolean | null) =
           topPiece && topPiece.owner !== currentPlayer;
 
         if (isOpponentSquare) {
